@@ -9,6 +9,7 @@ library ResourcePoolLib {
         struct Pool {
                 uint rotationDelay;
                 uint overlapSize;
+                uint freezePeriod;
                 uint minimumBond;
 
                 uint _id;
@@ -36,9 +37,9 @@ library ResourcePoolLib {
                 address[] members;
         }
 
-        function _spawnGeneration(Pool storage self) internal returns (Generation) {
+        function _createNextGeneration(Pool storage self) internal returns (Generation) {
                 /*
-                 *  Spawns a new pool generation with all of the current
+                 *  Creat a new pool generation with all of the current
                  *  generation's members copied over in random order.
                  */
                 var previousGeneration = self.generations[self._id];
@@ -46,7 +47,7 @@ library ResourcePoolLib {
                 self._id += 1;
                 Generation storage nextGeneration = self.generations[self._id];
                 nextGeneration.id = self._id;
-                nextGeneration.startAt = block.number + self.rotationDelay;
+                nextGeneration.startAt = block.number + self.freezePeriod + self.rotationDelay;
 
                 if (previousGeneration.id == 0) {
                         // This is the first generation so we just need to set
@@ -55,7 +56,7 @@ library ResourcePoolLib {
                 }
 
                 // Set the end date for the current generation.
-                previousGeneration.endAt = block.number + self.rotationDelay + self.overlapSize;
+                previousGeneration.endAt = block.number + self.freezePeriod + self.rotationDelay + self.overlapSize;
 
                 // Now we copy the members of the previous generation over to
                 // the next generation as well as randomizing their order.
@@ -76,30 +77,38 @@ library ResourcePoolLib {
                 return nextGeneration;
         }
 
-        function getGenerationForWindow(Pool storage self, uint leftBound, uint rightBound) constant returns (uint) {
+        function getGenerationForWindow(Pool storage self, uint leftBound, uint rightBound) internal returns (Generation) {
                 var left = GroveLib.query(self.generationStart, "<=", int(leftBound));
                 var right = GroveLib.query(self.generationEnd, ">=", int(rightBound));
 
-                if (leftBound == 0x0) {
-                        // There is no generation that satisfies this query
-                        return 0;
+                Generation memory leftCandidate = self.generations[StringLib.bytesToUInt(GroveLib.getNodeId(self.generationStart, left))];
+                Generation memory rightCandidate = self.generations[StringLib.bytesToUInt(GroveLib.getNodeId(self.generationEnd, right))];
+
+                if (leftCandidate.startAt <= leftBound && (leftCandidate.endAt <= rightBound || leftCandidate.endAt == 0)) {
+                    return leftCandidate;
                 }
-                if (leftBound == rightBound || rightBound == 0x0) {
-                        // - if equal, then there is alread a *next*
-                        // generation, but it isn't active yet.  If right is
-                        // null, then the generation denoted by leftBound has
-                        // not had it's end set.
-                        return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationStart, left));
+                if (rightCandidate.startAt <= leftBound && (rightCandidate.endAt <= rightBound || rightCandidate.endAt == 0)) {
+                    return rightCandidate;
                 }
-                return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationEnd, right));
+        }
+
+        function getHeadGeneration(Pool storage self) internal returns (Generation) {
+                return self.generations[self._id];
         }
 
 
-        function canEnterPool(address resourceAddress, bytes32 generationId) constant returns (bool);
-        function enterPool(bytes32 generationId) public;
+        /*
+         *  Pool membership API
+         */
+        function canEnterPool(address resourceAddress, bytes32 generationId) constant returns (bool) {
+        }
+        function enterPool(Pool storage self, address resourceAddress) public {
+        }
 
-        function canExitPool(address resourceAddress, bytes32 generationId) constant returns (bool);
-        function exitPool(bytes32 generationId) public;
+        function canExitPool(address resourceAddress, bytes32 generationId) constant returns (bool) {
+        }
+        function exitPool(bytes32 generationId) public {
+        }
 
         /*
          *  Bonding
@@ -135,27 +144,27 @@ library ResourcePoolLib {
                 return false;
         }
 
-        function withdrawBond(Pool storage self, uint value) public {
+        function withdrawBond(Pool storage self, address resourceAddress, uint value) public {
                 /*
                  *  Only if you are not in either of the current call pools.
                  */
                 // Prevent underflow
-                if (value > self.bonds[msg.sender]) {
+                if (value > self.bonds[resourceAddress]) {
                         throw;
                 }
 
                 // Do a permissions check to be sure they can withdraw the
                 // funds.
-                if (!canWithdrawBond(self, msg.sender, value)) {
+                if (!canWithdrawBond(self, resourceAddress, value)) {
                         return;
                 }
 
-                _deductFromBond(self, msg.sender, value);
-                if (!msg.sender.send(value)) {
+                _deductFromBond(self, resourceAddress, value);
+                if (!resourceAddress.send(value)) {
                         // Potentially sending money to a contract that
                         // has a fallback function.  So instead, try
                         // tranferring the funds with the call api.
-                        if (!msg.sender.call.gas(msg.gas).value(value)()) {
+                        if (!resourceAddress.call.gas(msg.gas).value(value)()) {
                                 // Revert the entire transaction.  No
                                 // need to destroy the funds.
                                 throw;
