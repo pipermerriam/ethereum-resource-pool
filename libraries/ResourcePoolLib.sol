@@ -38,6 +38,7 @@ library ResourcePoolLib {
         }
 
         function _createNextGeneration(Pool storage self) internal returns (Generation) {
+            // TODO: tests
                 /*
                  *  Creat a new pool generation with all of the current
                  *  generation's members copied over in random order.
@@ -78,6 +79,7 @@ library ResourcePoolLib {
         }
 
         function getGenerationForWindow(Pool storage self, uint leftBound, uint rightBound) internal returns (Generation) {
+            // TODO: tests
                 var left = GroveLib.query(self.generationStart, "<=", int(leftBound));
                 var right = GroveLib.query(self.generationEnd, ">=", int(rightBound));
 
@@ -92,16 +94,92 @@ library ResourcePoolLib {
                 }
         }
 
-        function getHeadGeneration(Pool storage self) internal returns (Generation) {
-                return self.generations[self._id];
+        function getNextGenerationId(Pool storage self) constant returns (uint) {
+            // TODO: tests
+                var next = GroveLib.query(self.generationStart, ">", int(block.number));
+                if (next == 0x0) {
+                    return 0;
+                }
+                return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationStart, next));
         }
 
+        function getCurrentGenerationId(Pool storage self) constant returns (uint) {
+            // TODO: tests
+                var next = GroveLib.query(self.generationEnd, ">", int(block.number));
+                if (next != 0x0) {
+                    return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationEnd, next));
+                }
+
+                next = GroveLib.query(self.generationStart, "<=", int(block.number));
+                if (next != 0x0) {
+                    return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationStart, next));
+                }
+                return 0;
+        }
 
         /*
          *  Pool membership API
          */
-        function canEnterPool(address resourceAddress, bytes32 generationId) constant returns (bool) {
+        function isInGeneration(Pool storage self, address resourceAddress, uint generationId) constant returns (bool) {
+            // TODO: tests
+            if (generationId == 0) {
+                return false;
+            }
+            Generation memory generation = self.generations[generationId];
+            for (uint i = 0; i < generation.members.length; i++) {
+                if (generation.members[i] == resourceAddress) {
+                    return true;
+                }
+            }
+            return false;
         }
+
+        function isInCurrentGeneration(Pool storage self, address resourceAddress) constant returns (bool) {
+            // TODO: tests
+            return isInGeneration(self, resourceAddress, getCurrentGenerationId(self));
+        }
+
+        function isInNextGeneration(Pool storage self, address resourceAddress) constant returns (bool) {
+            // TODO: tests
+            return isInGeneration(self, resourceAddress, getNextGenerationId(self));
+        }
+
+        function isInPool(Pool storage self, address resourceAddress) constant returns (bool) {
+            // TODO: tests
+            return (isInCurrentGeneration(self, resourceAddress) || isInNextGeneration(self, resourceAddress));
+        }
+
+        function canEnterPool(Pool storage self, address resourceAddress) constant returns (bool) {
+            /*
+             *  - bond
+             *  - pool is open
+             *  - not already in it.
+             *  - not already left it.
+             */
+            // TODO: tests
+            if (self.bonds[resourceAddress] < self.minimumBond) {
+                // Insufficient bond balance;
+                return false;
+            }
+
+            if (isInPool(self, resourceAddress)) {
+                // Already in the pool either in the next upcoming generation
+                // or the currently active generation.
+                return false;
+            }
+
+            var nextGenerationId = getNextGenerationId(self);
+            if (nextGenerationId != 0) {
+                var nextGeneration = self.generations[nextGenerationId];
+                if (nextGeneration.startAt - self.freezePeriod >= block.number) {
+                    // Next generation starts too soon.
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         function enterPool(Pool storage self, address resourceAddress) public {
         }
 
