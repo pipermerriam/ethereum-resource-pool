@@ -14,11 +14,8 @@ contract ResourcePoolTester {
         /*
          * Shortcuts
          */
-        function createGeneration(uint startAt, uint endAt) public {
-            pool._id++;
-            var generation = pool.generations[pool._id];
-            generation.startAt = startAt;
-            generation.endAt = endAt;
+        function createNextGeneration() public {
+            ResourcePoolLib._createNextGeneration(pool);
         }
 
         function addAddressToGeneration(address resourceAddress, uint generationId) public {
@@ -36,6 +33,14 @@ contract ResourcePoolTester {
 
         function getGenerationEndAt(uint generationId) constant returns (uint) {
             return pool.generations[generationId].endAt;
+        }
+
+        function getGenerationMemberLength(uint generationId) constant returns (uint) {
+            return pool.generations[generationId].members.length;
+        }
+
+        function getPoolId() constant returns (uint) {
+            return pool._id;
         }
 
         function getPoolOverlapSize() constant returns (uint) {

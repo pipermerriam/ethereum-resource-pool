@@ -49,6 +49,7 @@ library ResourcePoolLib {
                 Generation storage nextGeneration = self.generations[self._id];
                 nextGeneration.id = self._id;
                 nextGeneration.startAt = block.number + self.freezePeriod + self.rotationDelay;
+                GroveLib.insert(self.generationStart, StringLib.uintToBytes(nextGeneration.id), int(nextGeneration.startAt));
 
                 if (previousGeneration.id == 0) {
                         // This is the first generation so we just need to set
@@ -58,6 +59,7 @@ library ResourcePoolLib {
 
                 // Set the end date for the current generation.
                 previousGeneration.endAt = block.number + self.freezePeriod + self.rotationDelay + self.overlapSize;
+                GroveLib.insert(self.generationStart, StringLib.uintToBytes(previousGeneration.id), int(previousGeneration.endAt));
 
                 // Now we copy the members of the previous generation over to
                 // the next generation as well as randomizing their order.
@@ -196,6 +198,20 @@ library ResourcePoolLib {
         }
 
         function canExitPool(Pool storage self, address resourceAddress) constant returns (bool) {
+            if (!isInCurrentGeneration(self, resourceAddress)) {
+                // Not in the pool.
+                return false;
+            }
+
+            uint nextGenerationId = getNextGenerationId(self);
+            if (nextGenerationId == 0) {
+                // Next generation hasn't been generated yet.
+                return true;
+            }
+
+            // They can leave if they are still in the next generation.
+            // otherwise they have already left it.
+            return isInNextGeneration(self, resourceAddress);
         }
         function exitPool(bytes32 generationId) public {
         }
