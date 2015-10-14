@@ -37,7 +37,7 @@ library ResourcePoolLib {
                 address[] members;
         }
 
-        function _createNextGeneration(Pool storage self) internal returns (Generation) {
+        function _createNextGeneration(Pool storage self) public returns (uint) {
             // TODO: tests
                 /*
                  *  Creat a new pool generation with all of the current
@@ -53,7 +53,7 @@ library ResourcePoolLib {
                 if (previousGeneration.id == 0) {
                         // This is the first generation so we just need to set
                         // it's `id` and `startAt`.
-                        return nextGeneration;
+                        return nextGeneration.id;
                 }
 
                 // Set the end date for the current generation.
@@ -75,7 +75,7 @@ library ResourcePoolLib {
                     members[index] = members[members.length - 1];
                 }
 
-                return nextGeneration;
+                return nextGeneration.id;
         }
 
         function getGenerationForWindow(Pool storage self, uint leftBound, uint rightBound) internal returns (Generation) {
@@ -181,9 +181,21 @@ library ResourcePoolLib {
         }
 
         function enterPool(Pool storage self, address resourceAddress) public {
+            if (!canEnterPool(self, resourceAddress)) {
+                throw;
+            }
+            uint nextGenerationId = getNextGenerationId(self);
+            if (nextGenerationId == 0) {
+                // No next generation has formed yet so create it.
+                nextGenerationId = _createNextGeneration(self);
+            }
+            Generation storage nextGeneration = self.generations[nextGenerationId];
+            // now add the new address.
+            nextGeneration.members.length += 1;
+            nextGeneration.members[nextGeneration.members.length - 1] = resourceAddress;
         }
 
-        function canExitPool(address resourceAddress, bytes32 generationId) constant returns (bool) {
+        function canExitPool(Pool storage self, address resourceAddress) constant returns (bool) {
         }
         function exitPool(bytes32 generationId) public {
         }
