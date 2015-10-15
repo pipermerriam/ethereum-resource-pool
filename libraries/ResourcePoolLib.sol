@@ -59,7 +59,7 @@ library ResourcePoolLib {
 
                 // Set the end date for the current generation.
                 previousGeneration.endAt = block.number + self.freezePeriod + self.rotationDelay + self.overlapSize;
-                GroveLib.insert(self.generationStart, StringLib.uintToBytes(previousGeneration.id), int(previousGeneration.endAt));
+                GroveLib.insert(self.generationEnd, StringLib.uintToBytes(previousGeneration.id), int(previousGeneration.endAt));
 
                 // Now we copy the members of the previous generation over to
                 // the next generation as well as randomizing their order.
@@ -68,7 +68,7 @@ library ResourcePoolLib {
                 for (uint i = 0; i < members.length; i++) {
                     // Pick a *random* index and push it onto the next
                     // generation's members.
-                    uint index = uint(sha3(block.blockhash(block.number))) % (nextGeneration.members.length - members.length);
+                    uint index = uint(sha3(block.blockhash(block.number))) % (members.length - nextGeneration.members.length);
                     nextGeneration.members.length += 1;
                     nextGeneration.members[nextGeneration.members.length - 1] = members[index];
 
@@ -102,19 +102,19 @@ library ResourcePoolLib {
                 if (next == 0x0) {
                     return 0;
                 }
-                return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationStart, next));
+                return StringLib.bytesToUInt(next);
         }
 
         function getCurrentGenerationId(Pool storage self) constant returns (uint) {
             // TODO: tests
                 var next = GroveLib.query(self.generationEnd, ">", int(block.number));
                 if (next != 0x0) {
-                    return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationEnd, next));
+                    return StringLib.bytesToUInt(next);
                 }
 
                 next = GroveLib.query(self.generationStart, "<=", int(block.number));
                 if (next != 0x0) {
-                    return StringLib.bytesToUInt(GroveLib.getNodeId(self.generationStart, next));
+                    return StringLib.bytesToUInt(next);
                 }
                 return 0;
         }
@@ -209,11 +209,34 @@ library ResourcePoolLib {
                 return true;
             }
 
+            if (self.generations[nextGenerationId].startAt - self.freezePeriod <= block.number) {
+                // Next generation starts too soon.
+                return false;
+            }
+
             // They can leave if they are still in the next generation.
             // otherwise they have already left it.
             return isInNextGeneration(self, resourceAddress);
         }
-        function exitPool(bytes32 generationId) public {
+
+        function exitPool(Pool storage self, address resourceAddress) public {
+            if (!canExitPool(self, resourceAddress)) {
+                throw;
+            }
+            uint nextGenerationId = getNextGenerationId(self);
+            if (nextGenerationId == 0) {
+                // No next generation has formed yet so create it.
+                nextGenerationId = _createNextGeneration(self);
+            }
+            Generation storage nextGeneration = self.generations[nextGenerationId];
+            // now remove the address
+            for (uint i = 0; i < nextGeneration.members.length; i++) {
+                if (nextGeneration.members[i] == resourceAddress) {
+                    nextGeneration.members[i] = nextGeneration.members[nextGeneration.members.length - 1];
+                    nextGeneration.members.length -= 1;
+                    break;
+                }
+            }
         }
 
         /*

@@ -83,6 +83,14 @@ contract ResourcePoolTester {
             return ResourcePoolLib.canExitPool(pool, resourceAddress);
         }
 
+        function exitPool() public {
+            ResourcePoolLib.exitPool(pool, msg.sender);
+        }
+
+        function exitPool(address resourceAddress) public {
+            ResourcePoolLib.exitPool(pool, resourceAddress);
+        }
+
         /*
          *  Pool Generation Information
          */
